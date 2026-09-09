@@ -1,0 +1,12 @@
+{
+  "users": {
+    "john": {
+      "username": "johndoe",
+      "first_name": "John",
+      "last_name": "Doe",
+      "email": "manderson@teamraft.com",
+      "group": "Data Analyst",
+      "stt": "Alabama"
+    }
+  }
+}
