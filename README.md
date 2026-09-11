@@ -1,6 +1,6 @@
 # TANF development utilities
 
-This repository stores the local OpenCode configuration, agent skills, and personal utilities used while developing TANF-app. Its `.agents` directory is linked into the main TANF-app checkout and into each worktree created by `tanf-worktree.sh`.
+This repository stores the local OpenCode configuration, agent skills, and development utilities used while developing TANF-app. Its `.agents` directory is linked into the main TANF-app checkout and into each worktree created by `tanf-worktree.sh`.
 
 The repository can be renamed without changing the worktree script because the script locates `.agents` and `opencode.json` relative to itself.
 
@@ -13,8 +13,7 @@ By default, the worktree helper expects these paths:
 |-- TANF-utils/
 |   |-- .agents/
 |   |-- opencode.json
-|   `-- personal/
-|       `-- scripts/
+|   `-- scripts/
 `-- TANF-app/
     |-- 00-main/
     `-- <issue worktrees>
@@ -27,7 +26,7 @@ Configure the repository locations in your shell startup file. `TANF_WORKTREE_RO
 ```bash
 export TANF_WORKTREE_ROOT="$HOME/repos/work/TANF-app"
 export TANF_UTILS_ROOT="$HOME/repos/work/TANF-utils"
-export PATH="$TANF_UTILS_ROOT/personal/scripts:$PATH"
+export PATH="$TANF_UTILS_ROOT/scripts:$PATH"
 ```
 
 The scripts use those repository paths as defaults. Export the root variables if either repository is elsewhere, and add the scripts directory to `PATH` to make each executable script available from any directory.
@@ -98,13 +97,13 @@ tanf-worktree.sh finish 6000 --delete-branch
 
 Run `tanf-worktree.sh --help` for all options.
 
-## Personal scripts
+## Utility scripts
 
 The remaining scripts can also be run from any directory. For local operations, they use `$TANF_WORKTREE_ROOT/00-main/tdrs-backend`.
 
 ### Add local test users
 
-`personal/scripts/add_test_user.sh` creates or updates users in the local Docker-backed Django environment. User definitions live beside it in `personal/scripts/test_users.json`.
+`scripts/add_test_user.sh` creates or updates users in the local Docker-backed Django environment. User definitions live beside it in `scripts/test_users.json`.
 
 ```bash
 add_test_user.sh --list
@@ -116,7 +115,7 @@ This script requires `jq` and a running backend container.
 
 ### Change a test user's role
 
-`personal/scripts/toggle_user_role.sh` changes the role and location assignments for the email configured at the top of the script. Review that email before use.
+`scripts/toggle_user_role.sh` changes the role and location assignments for the email configured at the top of the script. Review that email before use.
 
 ```bash
 toggle_user_role.sh analyst
@@ -126,7 +125,3 @@ toggle_user_role.sh admin --env tanf-dev
 ```
 
 Local use requires a running backend container. Remote use requires the Cloud Foundry CLI to be authenticated and targeted correctly. The `.bk` file is the older local-only version retained for reference.
-
-## Other utilities
-
-`personal/tmp/datapipeline_scripts/` contains the retained TANF SQL/reporting notebooks. They are reference utilities and are not used by the worktree workflow.

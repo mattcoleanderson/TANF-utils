@@ -5,8 +5,8 @@
 # Configure users in test_users.json (same directory as this script)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-UTILS_ROOT="${TANF_UTILS_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
-CONFIG_FILE="$UTILS_ROOT/personal/scripts/test_users.json"
+UTILS_ROOT="${TANF_UTILS_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+CONFIG_FILE="$UTILS_ROOT/scripts/test_users.json"
 TANF_WORKTREE_ROOT="${TANF_WORKTREE_ROOT:-$HOME/repos/work/TANF-app}"
 BACKEND_DIR="$TANF_WORKTREE_ROOT/00-main/tdrs-backend"
 
