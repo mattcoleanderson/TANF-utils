@@ -10,7 +10,7 @@ By default, the worktree helper expects these paths:
 
 ```text
 ~/repos/work/
-|-- TANF-agents/
+|-- TANF-utils/
 |   |-- .agents/
 |   |-- opencode.json
 |   `-- personal/
@@ -33,14 +33,14 @@ export TANF_WORKTREE_ROOT="$HOME/another/path/TANF-app"
 Link the shared agent instructions into the main checkout:
 
 ```bash
-ln -s "$HOME/repos/work/TANF-agents/.agents" \
+ln -s "$HOME/repos/work/TANF-utils/.agents" \
   "$HOME/repos/work/TANF-app/00-main/.agents"
 ```
 
 Optionally link the shared OpenCode configuration into the main checkout too:
 
 ```bash
-ln -s "$HOME/repos/work/TANF-agents/opencode.json" \
+ln -s "$HOME/repos/work/TANF-utils/opencode.json" \
   "$HOME/repos/work/TANF-app/00-main/opencode.json"
 ```
 
@@ -57,7 +57,7 @@ For convenient shell access, add a function like this to `~/.zshrc`:
 
 ```bash
 tanf-worktree() {
-  "$HOME/repos/work/TANF-agents/personal/scripts/tanf-worktree.sh" "$@"
+  "$HOME/repos/work/TANF-utils/personal/scripts/tanf-worktree.sh" "$@"
 }
 ```
 
@@ -113,9 +113,9 @@ Run the remaining scripts from a TANF-app checkout or worktree because they expe
 `personal/scripts/add_test_user.sh` creates or updates users in the local Docker-backed Django environment. User definitions live beside it in `personal/scripts/test_users.json`.
 
 ```bash
-$HOME/repos/work/TANF-agents/personal/scripts/add_test_user.sh --list
-$HOME/repos/work/TANF-agents/personal/scripts/add_test_user.sh john
-$HOME/repos/work/TANF-agents/personal/scripts/add_test_user.sh --all
+$HOME/repos/work/TANF-utils/personal/scripts/add_test_user.sh --list
+$HOME/repos/work/TANF-utils/personal/scripts/add_test_user.sh john
+$HOME/repos/work/TANF-utils/personal/scripts/add_test_user.sh --all
 ```
 
 This script requires `jq` and a running backend container.
@@ -125,10 +125,10 @@ This script requires `jq` and a running backend container.
 `personal/scripts/toggle_user_role.sh` changes the role and location assignments for the email configured at the top of the script. Review that email before use.
 
 ```bash
-$HOME/repos/work/TANF-agents/personal/scripts/toggle_user_role.sh analyst
-$HOME/repos/work/TANF-agents/personal/scripts/toggle_user_role.sh analyst --stt California
-$HOME/repos/work/TANF-agents/personal/scripts/toggle_user_role.sh regional --region Atlanta
-$HOME/repos/work/TANF-agents/personal/scripts/toggle_user_role.sh admin --env tanf-dev
+$HOME/repos/work/TANF-utils/personal/scripts/toggle_user_role.sh analyst
+$HOME/repos/work/TANF-utils/personal/scripts/toggle_user_role.sh analyst --stt California
+$HOME/repos/work/TANF-utils/personal/scripts/toggle_user_role.sh regional --region Atlanta
+$HOME/repos/work/TANF-utils/personal/scripts/toggle_user_role.sh admin --env tanf-dev
 ```
 
 Local use requires a running backend container. Remote use requires the Cloud Foundry CLI to be authenticated and targeted correctly. The `.bk` file is the older local-only version retained for reference.
