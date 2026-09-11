@@ -1,6 +1,6 @@
 #!/bin/bash
 # Toggle user role between different TDP groups
-# Usage: ./scripts/toggle_user_role.sh [role] [--stt NAME] [--region NAME] [--env APP_NAME]
+# Usage: toggle_user_role.sh [role] [--stt NAME] [--region NAME] [--env APP_NAME]
 #
 # Groups and their requirements:
 #   - OFA System Admin: Full admin access, no STT/regions (federal staff)
@@ -15,6 +15,8 @@ EMAIL="manderson@teamraft.com"
 DEFAULT_STT="Alabama"
 DEFAULT_REGION="Boston"
 CF_APP=""
+TANF_WORKTREE_ROOT="${TANF_WORKTREE_ROOT:-$HOME/repos/work/TANF-app}"
+BACKEND_DIR="$TANF_WORKTREE_ROOT/00-main/tdrs-backend"
 
 # Common Django model imports prepended to all shell commands.
 # Redundant when using shell_plus locally, but required for remote (manage.py shell).
@@ -35,7 +37,7 @@ run_django() {
     if [ -n "$CF_APP" ]; then
         printf '%s\n' "$full_code" | cf ssh "$CF_APP" -c "cd /home/vcap/app && /home/vcap/deps/1/python/bin/python manage.py shell"
     else
-        printf '%s\n' "$full_code" | (cd tdrs-backend && docker compose -f docker-compose.yml exec -T web python manage.py shell_plus)
+        printf '%s\n' "$full_code" | (cd "$BACKEND_DIR" && docker compose -f docker-compose.yml exec -T web python manage.py shell_plus)
     fi
 }
 
@@ -218,6 +220,10 @@ if [ -n "$CF_APP" ]; then
         exit 1
     fi
     echo "Targeting remote app: $CF_APP"
+elif [ ! -d "$BACKEND_DIR" ]; then
+    echo "ERROR: TANF backend not found: $BACKEND_DIR"
+    echo "Set TANF_WORKTREE_ROOT to the directory containing 00-main."
+    exit 1
 fi
 
 # ============================================================================

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Toggle user role between different TDP groups
-# Usage: ./scripts/toggle_user_role.sh [role] [--stt NAME] [--region NAME]
+# Usage: toggle_user_role.bk [role] [--stt NAME] [--region NAME]
 #
 # Groups and their requirements:
 #   - OFA System Admin: Full admin access, no STT/regions (federal staff)
@@ -14,6 +14,8 @@
 EMAIL="manderson@teamraft.com"
 DEFAULT_STT="Alabama"
 DEFAULT_REGION="Boston"
+TANF_WORKTREE_ROOT="${TANF_WORKTREE_ROOT:-$HOME/repos/work/TANF-app}"
+BACKEND_DIR="$TANF_WORKTREE_ROOT/00-main/tdrs-backend"
 
 # ============================================================================
 # Helper functions
@@ -47,7 +49,7 @@ show_usage() {
 }
 
 print_user_status() {
-    (cd tdrs-backend && docker compose -f docker-compose.yml exec -T web python manage.py shell_plus <<EOF
+    (cd "$BACKEND_DIR" && docker compose -f docker-compose.yml exec -T web python manage.py shell_plus <<EOF
 user = User.objects.get(username='$EMAIL')
 print('')
 print('=' * 50)
@@ -70,7 +72,7 @@ set_role_no_location() {
     local display_name="$2"
 
     echo "Switching $EMAIL to $display_name (no STT/regions)..."
-    (cd tdrs-backend && docker compose -f docker-compose.yml exec -T web python manage.py shell_plus <<EOF
+    (cd "$BACKEND_DIR" && docker compose -f docker-compose.yml exec -T web python manage.py shell_plus <<EOF
 user = User.objects.get(username='$EMAIL')
 group = Group.objects.get(name='$group_name')
 user.groups.clear()
@@ -89,7 +91,7 @@ set_role_with_stt() {
     local stt_name="$3"
 
     echo "Switching $EMAIL to $display_name (STT: $stt_name)..."
-    (cd tdrs-backend && docker compose -f docker-compose.yml exec -T web python manage.py shell_plus <<EOF
+    (cd "$BACKEND_DIR" && docker compose -f docker-compose.yml exec -T web python manage.py shell_plus <<EOF
 user = User.objects.get(username='$EMAIL')
 group = Group.objects.get(name='$group_name')
 try:
@@ -117,7 +119,7 @@ set_role_with_region() {
     local region_name="$3"
 
     echo "Switching $EMAIL to $display_name (Region: $region_name)..."
-    (cd tdrs-backend && docker compose -f docker-compose.yml exec -T web python manage.py shell_plus <<EOF
+    (cd "$BACKEND_DIR" && docker compose -f docker-compose.yml exec -T web python manage.py shell_plus <<EOF
 from tdpservice.stts.models import Region
 
 user = User.objects.get(username='$EMAIL')
@@ -175,6 +177,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+if [ ! -d "$BACKEND_DIR" ]; then
+    echo "ERROR: TANF backend not found: $BACKEND_DIR"
+    echo "Set TANF_WORKTREE_ROOT to the directory containing 00-main."
+    exit 1
+fi
+
 # ============================================================================
 # Execute role switch
 # ============================================================================
@@ -201,7 +209,7 @@ case "$ROLE" in
     developer)
         # Developer can optionally have STT for testing
         echo "Switching $EMAIL to Developer (optional STT: $STT_NAME)..."
-        (cd tdrs-backend && docker compose -f docker-compose.yml exec -T web python manage.py shell_plus <<EOF
+        (cd "$BACKEND_DIR" && docker compose -f docker-compose.yml exec -T web python manage.py shell_plus <<EOF
 user = User.objects.get(username='$EMAIL')
 try:
     group = Group.objects.get(name='Developer')

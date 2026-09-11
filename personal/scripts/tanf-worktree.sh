@@ -3,8 +3,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-UTILS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-WORKTREE_ROOT="${TANF_WORKTREE_ROOT:-/Users/matt.anderson/repos/work/TANF-app}"
+UTILS_ROOT="${TANF_UTILS_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+WORKTREE_ROOT="${TANF_WORKTREE_ROOT:-$HOME/repos/work/TANF-app}"
 MAIN_WORKTREE="$WORKTREE_ROOT/00-main"
 AGENTS_SOURCE="$UTILS_ROOT/.agents"
 OPENCODE_SOURCE="$UTILS_ROOT/opencode.json"

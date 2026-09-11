@@ -22,26 +22,30 @@ By default, the worktree helper expects these paths:
 
 `00-main` must be the main TANF-app checkout. New issue and review worktrees are created beside it under `TANF-app/`.
 
-If TANF-app is elsewhere, export its worktree root before running the helper:
+Configure the repository locations in your shell startup file. `TANF_WORKTREE_ROOT` must be the directory containing `00-main`:
 
 ```bash
-export TANF_WORKTREE_ROOT="$HOME/another/path/TANF-app"
+export TANF_WORKTREE_ROOT="$HOME/repos/work/TANF-app"
+export TANF_UTILS_ROOT="$HOME/repos/work/TANF-utils"
+export PATH="$TANF_UTILS_ROOT/personal/scripts:$PATH"
 ```
+
+The scripts use those repository paths as defaults. Export the root variables if either repository is elsewhere, and add the scripts directory to `PATH` to make each executable script available from any directory.
 
 ## Initial setup
 
 Link the shared agent instructions into the main checkout:
 
 ```bash
-ln -s "$HOME/repos/work/TANF-utils/.agents" \
-  "$HOME/repos/work/TANF-app/00-main/.agents"
+ln -s "$TANF_UTILS_ROOT/.agents" \
+  "$TANF_WORKTREE_ROOT/00-main/.agents"
 ```
 
 Optionally link the shared OpenCode configuration into the main checkout too:
 
 ```bash
-ln -s "$HOME/repos/work/TANF-utils/opencode.json" \
-  "$HOME/repos/work/TANF-app/00-main/opencode.json"
+ln -s "$TANF_UTILS_ROOT/opencode.json" \
+  "$TANF_WORKTREE_ROOT/00-main/opencode.json"
 ```
 
 The helper creates both links automatically in new worktrees. It also copies the untracked frontend and backend environment files from `00-main`, so these files must exist:
@@ -53,27 +57,17 @@ TANF-app/00-main/tdrs-backend/.env
 
 The worktree workflow requires `git`, `tmux`, `nvim`, and `opencode`. Pull request review worktrees also require `task` and the local services required by the selected Taskfile target.
 
-For convenient shell access, add a function like this to `~/.zshrc`:
-
-```bash
-tanf-worktree() {
-  "$HOME/repos/work/TANF-utils/personal/scripts/tanf-worktree.sh" "$@"
-}
-```
-
-Update the repository path in the function if the repository is moved or renamed.
-
 ## Worktree workflow
 
-Run `tanf-worktree` with no arguments for an interactive menu, or use one of the commands below. Run it from an existing tmux session, or pass `--session NAME`. If exactly one tmux session exists, it is selected automatically.
+Run `tanf-worktree.sh` with no arguments for an interactive menu, or use one of the commands below. Run it from an existing tmux session, or pass `--session NAME`. If exactly one tmux session exists, it is selected automatically.
 
 Branch and worktree names must start with a four-digit issue number followed by a hyphen, such as `6000-add-audit-log`.
 
 ### Start issue work
 
 ```bash
-tanf-worktree issue 6000-add-audit-log
-tanf-worktree issue 6000-add-audit-log --base release/v4.24.0
+tanf-worktree.sh issue 6000-add-audit-log
+tanf-worktree.sh issue 6000-add-audit-log --base release/v4.24.0
 ```
 
 This command:
@@ -86,8 +80,8 @@ This command:
 ### Review a pull request branch
 
 ```bash
-tanf-worktree review 6000-add-audit-log
-tanf-worktree review origin/6000-add-audit-log --task up
+tanf-worktree.sh review 6000-add-audit-log
+tanf-worktree.sh review origin/6000-add-audit-log --task up
 ```
 
 This fetches the remote branch, creates a detached review worktree, prepares its local files, and opens a tmux window named `R-6000`. The right pane runs `task up` by default. Use `--remote NAME` or `--task TARGET` to override those defaults.
@@ -95,27 +89,27 @@ This fetches the remote branch, creates a detached review worktree, prepares its
 ### List and remove worktrees
 
 ```bash
-tanf-worktree list
-tanf-worktree finish 6000-add-audit-log
-tanf-worktree finish 6000 --delete-branch
+tanf-worktree.sh list
+tanf-worktree.sh finish 6000-add-audit-log
+tanf-worktree.sh finish 6000 --delete-branch
 ```
 
 `finish` removes the worktree and any tmux window rooted in it. It preserves the local branch unless `--delete-branch` is supplied. Dirty worktrees are rejected unless `--force` is supplied.
 
-Run `tanf-worktree --help` for all options.
+Run `tanf-worktree.sh --help` for all options.
 
 ## Personal scripts
 
-Run the remaining scripts from a TANF-app checkout or worktree because they expect `tdrs-backend/` in the current directory.
+The remaining scripts can also be run from any directory. For local operations, they use `$TANF_WORKTREE_ROOT/00-main/tdrs-backend`.
 
 ### Add local test users
 
 `personal/scripts/add_test_user.sh` creates or updates users in the local Docker-backed Django environment. User definitions live beside it in `personal/scripts/test_users.json`.
 
 ```bash
-$HOME/repos/work/TANF-utils/personal/scripts/add_test_user.sh --list
-$HOME/repos/work/TANF-utils/personal/scripts/add_test_user.sh john
-$HOME/repos/work/TANF-utils/personal/scripts/add_test_user.sh --all
+add_test_user.sh --list
+add_test_user.sh john
+add_test_user.sh --all
 ```
 
 This script requires `jq` and a running backend container.
@@ -125,10 +119,10 @@ This script requires `jq` and a running backend container.
 `personal/scripts/toggle_user_role.sh` changes the role and location assignments for the email configured at the top of the script. Review that email before use.
 
 ```bash
-$HOME/repos/work/TANF-utils/personal/scripts/toggle_user_role.sh analyst
-$HOME/repos/work/TANF-utils/personal/scripts/toggle_user_role.sh analyst --stt California
-$HOME/repos/work/TANF-utils/personal/scripts/toggle_user_role.sh regional --region Atlanta
-$HOME/repos/work/TANF-utils/personal/scripts/toggle_user_role.sh admin --env tanf-dev
+toggle_user_role.sh analyst
+toggle_user_role.sh analyst --stt California
+toggle_user_role.sh regional --region Atlanta
+toggle_user_role.sh admin --env tanf-dev
 ```
 
 Local use requires a running backend container. Remote use requires the Cloud Foundry CLI to be authenticated and targeted correctly. The `.bk` file is the older local-only version retained for reference.

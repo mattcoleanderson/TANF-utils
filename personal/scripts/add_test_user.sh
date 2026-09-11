@@ -1,11 +1,14 @@
 #!/bin/bash
 # Add test users to the local database
-# Usage: ./scripts/add_test_user.sh [user_key|--list|--all]
+# Usage: add_test_user.sh [user_key|--list|--all]
 #
 # Configure users in test_users.json (same directory as this script)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/test_users.json"
+UTILS_ROOT="${TANF_UTILS_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+CONFIG_FILE="$UTILS_ROOT/personal/scripts/test_users.json"
+TANF_WORKTREE_ROOT="${TANF_WORKTREE_ROOT:-$HOME/repos/work/TANF-app}"
+BACKEND_DIR="$TANF_WORKTREE_ROOT/00-main/tdrs-backend"
 
 # ============================================================================
 # Helper functions
@@ -22,6 +25,12 @@ check_dependencies() {
         echo "Error: Config file not found: $CONFIG_FILE"
         echo "Creating template..."
         create_template
+        exit 1
+    fi
+
+    if [ ! -d "$BACKEND_DIR" ]; then
+        echo "Error: TANF backend not found: $BACKEND_DIR"
+        echo "Set TANF_WORKTREE_ROOT to the directory containing 00-main."
         exit 1
     fi
 }
@@ -83,7 +92,7 @@ create_user() {
     [ -n "$group" ] && echo "  Group: $group"
     [ -n "$stt" ] && echo "  STT: $stt"
 
-    cd tdrs-backend && docker compose -f docker-compose.yml exec -T web python manage.py shell_plus <<EOF
+    (cd "$BACKEND_DIR" && docker compose -f docker-compose.yml exec -T web python manage.py shell_plus <<EOF
 from tdpservice.users.models import AccountApprovalStatusChoices
 
 # Get or create user
@@ -143,6 +152,7 @@ print(f'  Status: {user.account_approval_status}')
 print(f'  Group: {user.groups.first().name if user.groups.exists() else "None"}')
 print(f'  STT: {user.stt}')
 EOF
+    )
 }
 
 # ============================================================================
