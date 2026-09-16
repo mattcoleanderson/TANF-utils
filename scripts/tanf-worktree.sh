@@ -38,8 +38,9 @@ Commands:
   list     List the repository's active worktrees.
 
 Branch naming:
-  Issue and review branches must start with a four-digit issue code and a hyphen,
-  for example: 5603-file-submission-error-message-and-form-reset
+  New issue branches and the final path component of existing review branches
+  must start with a four-digit issue code and a hyphen, for example:
+  feature/5603-file-submission-error-message-and-form-reset
 
 Options:
   --base REF          Base the new issue branch on REF (default: develop).
@@ -272,6 +273,7 @@ start_review() {
     local task_target="$3"
     local requested_session="$4"
     local branch
+    local branch_name
     local worktree_name
     local worktree_path
     local issue_code
@@ -285,12 +287,15 @@ start_review() {
     validate_environment
 
     branch=$(normalize_remote_branch "$remote" "$branch_input")
-    worktree_name="${branch//\//-}"
-    validate_worktree_name "$worktree_name"
+    git -C "$MAIN_WORKTREE" check-ref-format --branch "$branch" >/dev/null 2>&1 ||
+        die "Invalid Git branch name: $branch"
+    branch_name="${branch##*/}"
+    validate_worktree_name "$branch_name"
+    worktree_name="$branch_name"
     [[ "$task_target" =~ ^[A-Za-z0-9:_-]+$ ]] || die "Invalid Taskfile target: $task_target"
 
     worktree_path="$WORKTREE_ROOT/$worktree_name"
-    issue_code="${worktree_name:0:4}"
+    issue_code="${branch_name:0:4}"
     [ ! -e "$worktree_path" ] || die "Worktree path already exists: $worktree_path"
 
     session=$(resolve_tmux_session "$requested_session")

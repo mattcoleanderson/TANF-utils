@@ -60,7 +60,7 @@ The worktree workflow requires `git`, `tmux`, `nvim`, and `opencode`. Pull reque
 
 Run `tanf-worktree.sh` with no arguments for an interactive menu, or use one of the commands below. Run it from an existing tmux session, or pass `--session NAME`. If exactly one tmux session exists, it is selected automatically.
 
-Branch and worktree names must start with a four-digit issue number followed by a hyphen, such as `6000-add-audit-log`.
+New issue branch names must start with a four-digit issue number followed by a hyphen, such as `6000-add-audit-log`. Existing review branches may include a prefix such as `feature/`; their final path component must follow the same issue-number format and is used as the local worktree name.
 
 ### Start issue work
 
@@ -81,6 +81,7 @@ This command:
 ```bash
 tanf-worktree.sh review 6000-add-audit-log
 tanf-worktree.sh review origin/6000-add-audit-log --task up
+tanf-worktree.sh review feature/6000-add-audit-log
 ```
 
 This fetches the remote branch, creates a detached review worktree, prepares its local files, and opens a tmux window named `R-6000`. The right pane runs `task up` by default. Use `--remote NAME` or `--task TARGET` to override those defaults.
