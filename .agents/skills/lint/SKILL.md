@@ -20,11 +20,13 @@ Invoke with `/lint` followed by optional arguments:
 
 **Use tmux to run linters in a separate pane** - this prevents blocking and captures full output.
 
-**CRITICAL: Always use absolute pane IDs, never relative references like `{right}`.**
+**CRITICAL: Create the pane relative to `$TMUX_PANE`, then use absolute pane IDs for every subsequent operation.**
+
+Without `-t "$TMUX_PANE"`, `split-window` resolves against the currently active tmux client and can open in another LLM's window if the user changes focus. `$TMUX_PANE` is inherited from the pane running the calling LLM, so always pass it as the split target.
 
 ```bash
 # Step 1: Create pane and capture its absolute ID
-AGENT_TMUX_PANE_ID=$(tmux split-window -d -h -P -F '#{pane_id}' "<lint-command> 2>&1; tmux wait-for -S lint-done; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
+AGENT_TMUX_PANE_ID=$(tmux split-window -t "$TMUX_PANE" -d -h -P -F '#{pane_id}' "<lint-command> 2>&1; tmux wait-for -S lint-done; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
 
 # Step 2: Wait for completion and capture ENTIRE output using the pane ID from step 1
 tmux wait-for lint-done && tmux capture-pane -t "$AGENT_TMUX_PANE_ID" -p -S -
@@ -34,6 +36,7 @@ tmux kill-pane -t "$AGENT_TMUX_PANE_ID"
 ```
 
 **Key points:**
+- **Always pass `-t "$TMUX_PANE"` to `split-window`** so the lint pane opens in the calling LLM's window, regardless of which window the user is viewing.
 - **Use `-P -F '#{pane_id}'`** with `split-window` to print the new pane's absolute ID (e.g. `%15`). Read this from the command output and use it in all subsequent tmux commands.
 - **Never use `{right}`, `{left}`, or other relative pane references** — they depend on which pane the user has focused.
 - Set `history-limit 500000` on the pane immediately after creation to prevent tmux from evicting output (default is ~2000 lines)
@@ -51,7 +54,7 @@ This runs `flake8 .` inside the backend Docker container. Flake8 checks Python s
 
 **Example:**
 ```bash
-AGENT_TMUX_PANE_ID=$(tmux split-window -d -h -P -F '#{pane_id}' "task backend-lint 2>&1; tmux wait-for -S lint-done-be; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
+AGENT_TMUX_PANE_ID=$(tmux split-window -t "$TMUX_PANE" -d -h -P -F '#{pane_id}' "task backend-lint 2>&1; tmux wait-for -S lint-done-be; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
 ```
 
 **Flake8 output format:**
@@ -90,7 +93,7 @@ This runs `yarn lint` inside the frontend Docker container. ESLint checks JavaSc
 
 **Example:**
 ```bash
-AGENT_TMUX_PANE_ID=$(tmux split-window -d -h -P -F '#{pane_id}' "task frontend-lint 2>&1; tmux wait-for -S lint-done-fe; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
+AGENT_TMUX_PANE_ID=$(tmux split-window -t "$TMUX_PANE" -d -h -P -F '#{pane_id}' "task frontend-lint 2>&1; tmux wait-for -S lint-done-fe; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
 ```
 
 **ESLint output format:**
@@ -136,7 +139,7 @@ When running both backend and frontend, run them sequentially:
 
 ```bash
 # Backend first
-AGENT_TMUX_PANE_ID=$(tmux split-window -d -h -P -F '#{pane_id}' "task backend-lint 2>&1; tmux wait-for -S lint-done-be; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
+AGENT_TMUX_PANE_ID=$(tmux split-window -t "$TMUX_PANE" -d -h -P -F '#{pane_id}' "task backend-lint 2>&1; tmux wait-for -S lint-done-be; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
 
 # Wait and capture
 tmux wait-for lint-done-be && tmux capture-pane -t "$AGENT_TMUX_PANE_ID" -p -S -
@@ -147,7 +150,7 @@ tmux kill-pane -t "$AGENT_TMUX_PANE_ID"
 # Fix backend errors...
 
 # Then frontend
-AGENT_TMUX_PANE_ID=$(tmux split-window -d -h -P -F '#{pane_id}' "task frontend-lint 2>&1; tmux wait-for -S lint-done-fe; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
+AGENT_TMUX_PANE_ID=$(tmux split-window -t "$TMUX_PANE" -d -h -P -F '#{pane_id}' "task frontend-lint 2>&1; tmux wait-for -S lint-done-fe; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
 
 # Wait and capture
 tmux wait-for lint-done-fe && tmux capture-pane -t "$AGENT_TMUX_PANE_ID" -p -S -

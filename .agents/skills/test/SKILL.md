@@ -1,6 +1,6 @@
 ---
 name: test
-description: Run tests for the TANF-app project (backend pytest, frontend Jest, or e2e Cypress)
+description: Run TANF-app tests in tmux. Use whenever executing, rerunning, or diagnosing backend pytest, frontend Jest, or e2e Cypress tests, including verification after code changes; load this skill before issuing any such test command.
 user_invocable: true
 ---
 
@@ -26,12 +26,12 @@ Invoke with `/test` followed by optional arguments:
 
 **Use tmux to run tests in a separate pane** - this prevents blocking and allows faster feedback.
 
-**CRITICAL: Always use absolute pane IDs, never relative references like `{right}`.**
-Relative references (e.g. `{right}`, `{left}`) resolve based on the **currently focused pane**, not the pane the command was run from. If the user clicks to another pane (e.g. their editor) before a tmux command runs, `{right}` will target the wrong pane. Instead, capture the new pane's absolute ID (`%NN`) at creation time using `-P -F '#{pane_id}'` and use that ID for all subsequent operations.
+**CRITICAL: Create the pane relative to `$TMUX_PANE`, then use absolute pane IDs for every subsequent operation.**
+Without `-t "$TMUX_PANE"`, `split-window` resolves against the currently active tmux client and can open in another LLM's window if the user changes focus. `$TMUX_PANE` is inherited from the pane running the calling LLM, so always pass it as the split target. Relative references (e.g. `{right}`, `{left}`) also resolve based on the currently focused pane. Capture the new pane's absolute ID (`%NN`) at creation time using `-P -F '#{pane_id}'` and use that ID for all subsequent operations.
 
 ```bash
 # Step 1: Create pane and capture its absolute ID
-AGENT_TMUX_PANE_ID=$(tmux split-window -d -h -P -F '#{pane_id}' "<test-command> 2>&1; tmux wait-for -S test-done; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
+AGENT_TMUX_PANE_ID=$(tmux split-window -t "$TMUX_PANE" -d -h -P -F '#{pane_id}' "<test-command> 2>&1; tmux wait-for -S test-done; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
 
 # Step 2: Wait for completion and capture ENTIRE output using the pane ID from step 1
 tmux wait-for test-done && tmux capture-pane -t "$AGENT_TMUX_PANE_ID" -p -S -
@@ -41,6 +41,7 @@ tmux kill-pane -t "$AGENT_TMUX_PANE_ID"
 ```
 
 **Key points:**
+- **Always pass `-t "$TMUX_PANE"` to `split-window`** so the test pane opens in the calling LLM's window, regardless of which window the user is viewing.
 - **Use `-P -F '#{pane_id}'`** with `split-window` to print the new pane's absolute ID (e.g. `%15`). Read this from the command output and use it in all subsequent tmux commands.
 - **Never use `{right}`, `{left}`, or other relative pane references** — they depend on which pane the user has focused.
 - Set `history-limit 500000` on the pane immediately after creation to prevent tmux from evicting output (default is ~2000 lines)
@@ -53,7 +54,7 @@ tmux kill-pane -t "$AGENT_TMUX_PANE_ID"
 **Example:**
 ```bash
 # Start backend tests and capture pane ID
-AGENT_TMUX_PANE_ID=$(tmux split-window -d -h -P -F '#{pane_id}' "task backend-pytest PYTEST_ARGS='tdpservice/reports/test/ -v' 2>&1; tmux wait-for -S test-done; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
+AGENT_TMUX_PANE_ID=$(tmux split-window -t "$TMUX_PANE" -d -h -P -F '#{pane_id}' "task backend-pytest PYTEST_ARGS='tdpservice/reports/test/ -v' 2>&1; tmux wait-for -S test-done; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
 
 # Wait and capture ALL output (use pane ID from step above, e.g. %15)
 tmux wait-for test-done && tmux capture-pane -t "$AGENT_TMUX_PANE_ID" -p -S -
@@ -87,7 +88,7 @@ tmux kill-pane -t "$AGENT_TMUX_PANE_ID"
 **Example:**
 ```bash
 # Start frontend tests and capture pane ID
-AGENT_TMUX_PANE_ID=$(tmux split-window -d -h -P -F '#{pane_id}' "task frontend-test JEST_ARGS='--watchAll=false --testPathPattern=ComponentName' 2>&1; tmux wait-for -S test-done; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
+AGENT_TMUX_PANE_ID=$(tmux split-window -t "$TMUX_PANE" -d -h -P -F '#{pane_id}' "task frontend-test JEST_ARGS='--watchAll=false --testPathPattern=ComponentName' 2>&1; tmux wait-for -S test-done; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
 
 # Wait and capture ALL output (use pane ID from step above, e.g. %15)
 tmux wait-for test-done && tmux capture-pane -t "$AGENT_TMUX_PANE_ID" -p -S -
@@ -123,7 +124,7 @@ E2e tests use Cypress with cucumber/gherkin `.feature` files. They run headless 
 task e2e-env-var-setup
 
 # Step 2: Start Cypress in tmux pane and capture pane ID
-AGENT_TMUX_PANE_ID=$(tmux split-window -d -h -P -F '#{pane_id}' "cd /Users/matt.anderson/repos/work/TANF-app/tdrs-frontend && CYPRESS_TOKEN=local-cypress-token npx cypress run --headless 2>&1; tmux wait-for -S test-done; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
+AGENT_TMUX_PANE_ID=$(tmux split-window -t "$TMUX_PANE" -d -h -P -F '#{pane_id}' "cd /Users/matt.anderson/repos/work/TANF-app/tdrs-frontend && CYPRESS_TOKEN=local-cypress-token npx cypress run --headless 2>&1; tmux wait-for -S test-done; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
 
 # Step 3: Wait and capture ALL output (use pane ID from step above, e.g. %15)
 tmux wait-for test-done && tmux capture-pane -t "$AGENT_TMUX_PANE_ID" -p -S -
@@ -174,7 +175,7 @@ tmux kill-pane -t "$AGENT_TMUX_PANE_ID"
 
 4. **Start test in tmux pane and capture pane ID**:
    ```bash
-   AGENT_TMUX_PANE_ID=$(tmux split-window -d -h -P -F '#{pane_id}' "<command> 2>&1; tmux wait-for -S test-done; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
+   AGENT_TMUX_PANE_ID=$(tmux split-window -t "$TMUX_PANE" -d -h -P -F '#{pane_id}' "<command> 2>&1; tmux wait-for -S test-done; sleep 999") && tmux set-option -t "$AGENT_TMUX_PANE_ID" -p history-limit 500000 && echo "$AGENT_TMUX_PANE_ID"
    ```
 
 5. **Wait and capture complete output** (use pane ID from step 4):
