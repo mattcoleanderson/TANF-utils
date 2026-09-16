@@ -46,6 +46,8 @@
 - If Django model/table changes affect parser storage, run `task dump-parser-schema`, then from `tdrs-services/parser/` run `sqlc generate` and verify with `task parser:sqlc-diff`.
 
 ## Testing Expectations
+- Before running backend pytest, frontend Jest, or e2e Cypress tests, load the `test` skill and follow its tmux execution method.
+- Never run those tests inline; all test processes must run in a separate tmux pane targeted to the calling agent's `$TMUX_PANE`.
 - After backend/frontend/e2e code changes, run the narrowest relevant `/test` skill target; for Go parser changes, use the parser commands above.
 - If tests fail, prefer fixing incorrect tests first; change source only when the failure output and surrounding code show an implementation defect.
 - Backend test tasks bring up Docker services automatically. Go parser integration tests require backend Postgres/migrations and `DATABASE_URL=postgres://tdpuser:something_secure@localhost:5432/tdrs_test?sslmode=disable`.
