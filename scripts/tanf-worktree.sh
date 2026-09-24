@@ -33,7 +33,7 @@ Usage:
 
 Commands:
   issue    Create a branch and worktree, prepare local files, and open nvim/opencode.
-  review   Fetch a remote branch into a detached worktree and run `task up` in tmux.
+  review   Fetch a remote branch into a tracking worktree and run `task up` in tmux.
   finish   Remove a worktree and close its tmux window. The branch is kept by default.
   list     List the repository's active worktrees.
 
@@ -279,6 +279,7 @@ start_review() {
     local issue_code
     local session
     local review_commit
+    local remote_ref
     local task_command
 
     require_command git
@@ -297,25 +298,30 @@ start_review() {
     worktree_path="$WORKTREE_ROOT/$worktree_name"
     issue_code="${branch_name:0:4}"
     [ ! -e "$worktree_path" ] || die "Worktree path already exists: $worktree_path"
+    if git -C "$MAIN_WORKTREE" show-ref --verify --quiet "refs/heads/$branch_name"; then
+        die "Local branch already exists: $branch_name"
+    fi
 
     session=$(resolve_tmux_session "$requested_session")
     ensure_window_name_available "$session" "R-$issue_code"
 
     printf 'Fetching %s/%s...\n' "$remote" "$branch"
-    git -C "$MAIN_WORKTREE" fetch "$remote" "$branch"
-    review_commit=$(git -C "$MAIN_WORKTREE" rev-parse --verify 'FETCH_HEAD^{commit}')
+    remote_ref="refs/remotes/$remote/$branch"
+    git -C "$MAIN_WORKTREE" fetch "$remote" "+refs/heads/$branch:$remote_ref"
+    review_commit=$(git -C "$MAIN_WORKTREE" rev-parse --verify "$remote_ref^{commit}")
 
-    printf 'Creating detached review worktree at %s...\n' "$review_commit"
-    git -C "$MAIN_WORKTREE" worktree add --detach "$worktree_path" "$review_commit"
+    printf 'Creating review branch %s at %s...\n' "$branch_name" "$review_commit"
+    git -C "$MAIN_WORKTREE" worktree add --track -b "$branch_name" \
+        "$worktree_path" "$remote/$branch"
 
     if ! prepare_worktree "$worktree_path"; then
-        rollback_new_worktree "$worktree_path"
+        rollback_new_worktree "$worktree_path" "$branch_name"
         die "Worktree preparation failed; rolled back review workspace"
     fi
 
     printf -v task_command 'task %q' "$task_target"
     if ! create_two_pane_window "$session" "R-$issue_code" "$worktree_path" "$task_command"; then
-        rollback_new_worktree "$worktree_path"
+        rollback_new_worktree "$worktree_path" "$branch_name"
         die "tmux setup failed; rolled back review workspace"
     fi
 

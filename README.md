@@ -84,7 +84,7 @@ tanf-worktree.sh review origin/6000-add-audit-log --task up
 tanf-worktree.sh review feature/6000-add-audit-log
 ```
 
-This fetches the remote branch, creates a detached review worktree, prepares its local files, and opens a tmux window named `R-6000`. The right pane runs `task up` by default. Use `--remote NAME` or `--task TARGET` to override those defaults.
+This fetches the remote branch, creates a local branch and worktree that track it, prepares the local files, and opens a tmux window named `R-6000`. For example, reviewing `feature/6000-add-audit-log` creates local branch `6000-add-audit-log` with `origin/feature/6000-add-audit-log` as its upstream, so `git pull` retrieves later changes from the author. The right pane runs `task up` by default. Use `--remote NAME` or `--task TARGET` to override those defaults.
 
 ### List and remove worktrees
 
