@@ -21,7 +21,7 @@ BACKEND_DIR="$TANF_WORKTREE_ROOT/00-main/tdrs-backend"
 # Common Django model imports prepended to all shell commands.
 # Redundant when using shell_plus locally, but required for remote (manage.py shell).
 DJANGO_IMPORTS='from django.contrib.auth.models import Group
-from tdpservice.users.models import User
+from tdpservice.users.models import AccountApprovalStatusChoices, User
 from tdpservice.stts.models import STT, Region
 '
 
@@ -105,6 +105,7 @@ user.groups.clear()
 user.groups.add(group)
 user.stt = None
 user.regions.clear()
+user.account_approval_status = AccountApprovalStatusChoices.APPROVED
 user.save()
 EOF
     print_user_status
@@ -140,6 +141,7 @@ user.groups.clear()
 user.groups.add(group)
 user.stt = stt
 user.regions.clear()
+user.account_approval_status = AccountApprovalStatusChoices.APPROVED
 user.save()
 EOF
     print_user_status
@@ -168,6 +170,7 @@ user.groups.add(group)
 user.stt = None
 user.regions.clear()
 user.regions.add(region)
+user.account_approval_status = AccountApprovalStatusChoices.APPROVED
 user.save()
 EOF
     print_user_status
@@ -274,6 +277,7 @@ user.groups.clear()
 user.groups.add(group)
 user.stt = stt
 user.regions.clear()
+user.account_approval_status = AccountApprovalStatusChoices.APPROVED
 user.save()
 EOF
         print_user_status
