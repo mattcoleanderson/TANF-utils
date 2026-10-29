@@ -54,7 +54,7 @@ TANF-app/00-main/tdrs-frontend/.env
 TANF-app/00-main/tdrs-backend/.env
 ```
 
-The worktree workflow requires `git`, `tmux`, `nvim`, and `opencode`. Pull request review worktrees also require `task` and the local services required by the selected Taskfile target.
+The worktree workflow requires `git`, `tmux`, `nvim`, and `opencode`. Pull request review worktrees also require Docker with the Compose plugin. A custom review Taskfile target additionally requires `task` and any local services used by that target.
 
 ## Worktree workflow
 
@@ -84,7 +84,13 @@ tanf-worktree.sh review origin/6000-add-audit-log --task up
 tanf-worktree.sh review feature/6000-add-audit-log
 ```
 
-This fetches the remote branch, creates a local branch and worktree that track it, prepares the local files, and opens a tmux window named `R-6000`. For example, reviewing `feature/6000-add-audit-log` creates local branch `6000-add-audit-log` with `origin/feature/6000-add-audit-log` as its upstream, so `git pull` retrieves later changes from the author. The right pane runs `task up` by default. Use `--remote NAME` or `--task TARGET` to override those defaults.
+This fetches the remote branch, creates a local branch and worktree that track it, prepares the local files, and opens a tmux window named `R-6000`. For example, reviewing `feature/6000-add-audit-log` creates local branch `6000-add-audit-log` with `origin/feature/6000-add-audit-log` as its upstream, so `git pull` retrieves later changes from the author.
+
+The review deployment runs in the new tmux window. It stops the shared `tdrs-frontend` and `tdrs-backend` Compose projects, removes all named volumes belonging to the backend project, rebuilds and starts the review branch's backend, applies its migrations, then rebuilds and starts its nginx frontend. The command stops on the first failure.
+
+**Warning:** Starting any PR review deletes the shared local backend PostgreSQL database and the other backend Compose volumes. Review environments are intentionally disposable, and only one TANF-app worktree can own the shared stack at a time.
+
+`--task TARGET` is an escape hatch for a nonstandard review deployment. Cleanup is unchanged and remains destructive, but the selected Taskfile target replaces the standard backend rebuild, migration, and nginx frontend rebuild sequence. Omitting `--task` uses the standard clean deployment; `--task up` is treated as that default rather than invoking the repository's ordinary `up` task.
 
 ### List and remove worktrees
 
@@ -94,7 +100,9 @@ tanf-worktree.sh finish 6000-add-audit-log
 tanf-worktree.sh finish 6000 --delete-branch
 ```
 
-`finish` removes the worktree and any tmux window rooted in it. It preserves the local branch unless `--delete-branch` is supplied. Dirty worktrees are rejected unless `--force` is supplied.
+For review worktrees, `finish` checks the running Compose containers before removing the worktree. It stops each shared backend or frontend project only when Docker's Compose labels show that the project was started from the worktree being removed, preventing containers from retaining bind mounts into a deleted worktree. Finishing an inactive review worktree does not stop a stack owned by another worktree. Issue-worktree cleanup is unchanged and does not require Docker.
+
+The command also removes any tmux window rooted in the worktree. It preserves the local branch unless `--delete-branch` is supplied. Dirty worktrees are rejected unless `--force` is supplied. Backend volumes are retained by `finish`, but the next `review` always deletes them before deployment.
 
 Run `tanf-worktree.sh --help` for all options.
 

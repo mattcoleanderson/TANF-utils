@@ -13,6 +13,9 @@ BACKEND_ENV_SOURCE="$MAIN_WORKTREE/tdrs-backend/.env"
 DEFAULT_BASE="develop"
 DEFAULT_REMOTE="origin"
 DEFAULT_REVIEW_TASK="up"
+BACKEND_COMPOSE_PROJECT="tdrs-backend"
+FRONTEND_COMPOSE_PROJECT="tdrs-frontend"
+REVIEW_WORKTREE_MARKER="tanf-review-worktree"
 
 die() {
     printf 'Error: %s\n' "$*" >&2
@@ -33,8 +36,11 @@ Usage:
 
 Commands:
   issue    Create a branch and worktree, prepare local files, and open nvim/opencode.
-  review   Fetch a remote branch into a tracking worktree and run `task up` in tmux.
-  finish   Remove a worktree and close its tmux window. The branch is kept by default.
+  review   Create a tracking worktree and deploy a clean, disposable review stack.
+           This stops the shared stack, deletes its backend volumes, rebuilds the
+           branch's backend and nginx frontend, and applies its migrations.
+  finish   Stop Compose projects owned by a review worktree, remove it, and close
+           its tmux window. Inactive worktrees do not affect another review stack.
   list     List the repository's active worktrees.
 
 Branch naming:
@@ -45,7 +51,8 @@ Branch naming:
 Options:
   --base REF          Base the new issue branch on REF (default: develop).
   --remote NAME       Fetch the review branch from NAME (default: origin).
-  --task TARGET       Taskfile target used for a review (default: up).
+  --task TARGET       After destructive cleanup, run TARGET instead of the standard
+                      clean rebuild and migration sequence (default: up).
   --session NAME      Use this tmux session instead of the current session.
   --delete-branch     Delete the local issue branch after removing its worktree.
   --force             Remove a dirty worktree and force branch deletion when requested.
@@ -168,18 +175,21 @@ create_two_pane_window() {
     local right_command="${5:-}"
     local window_id
     local left_pane
-    local right_pane
+    local keep_shell='; command_status=$?; if [ "$command_status" -ne 0 ]; then printf "Command failed (exit %s).\n" "$command_status"; fi; exec "${SHELL:-/bin/bash}" -l'
 
+    # Start commands as pane processes instead of typing into an initializing shell.
+    # Long review commands can otherwise be truncated by the terminal input buffer.
     window_id=$(tmux new-window -d -P -F '#{window_id}' \
-        -t "=$session" -n "$window_name" -c "$worktree_path") || return 1
+        -t "=$session" -n "$window_name" -c "$worktree_path" \
+        "$left_command$keep_shell") || return 1
 
     left_pane=$(tmux list-panes -t "$window_id" -F '#{pane_id}') || {
         tmux kill-window -t "$window_id" 2>/dev/null || true
         return 1
     }
 
-    right_pane=$(tmux split-window -h -d -P -F '#{pane_id}' \
-        -t "$left_pane" -c "$worktree_path") || {
+    tmux split-window -h -d \
+        -t "$left_pane" -c "$worktree_path" "${right_command:-:}$keep_shell" || {
         tmux kill-window -t "$window_id" 2>/dev/null || true
         return 1
     }
@@ -188,16 +198,6 @@ create_two_pane_window() {
         tmux kill-window -t "$window_id" 2>/dev/null || true
         return 1
     }
-    tmux send-keys -t "$left_pane" "$left_command" C-m || {
-        tmux kill-window -t "$window_id" 2>/dev/null || true
-        return 1
-    }
-    if [ -n "$right_command" ]; then
-        tmux send-keys -t "$right_pane" "$right_command" C-m || {
-            tmux kill-window -t "$window_id" 2>/dev/null || true
-            return 1
-        }
-    fi
     tmux select-pane -t "$left_pane" || {
         tmux kill-window -t "$window_id" 2>/dev/null || true
         return 1
@@ -267,6 +267,38 @@ normalize_remote_branch() {
     printf '%s\n' "$branch"
 }
 
+review_tmux_command() {
+    local worktree_path="$1"
+    local task_target="$2"
+    local backend_dir="$worktree_path/tdrs-backend"
+    local frontend_dir="$worktree_path/tdrs-frontend"
+    local backend_compose="$backend_dir/docker-compose.yml"
+    local frontend_compose="$frontend_dir/docker-compose.yml"
+    local command
+    local task_command
+
+    printf -v command \
+        'set -euo pipefail; docker compose --project-name %q --project-directory %q -f %q down --remove-orphans; docker compose --project-name %q --project-directory %q -f %q down --volumes --remove-orphans; backend_volumes=$(docker volume ls -q --filter label=com.docker.compose.project=%q); if [ -n "$backend_volumes" ]; then docker volume rm $backend_volumes; fi' \
+        "$FRONTEND_COMPOSE_PROJECT" "$frontend_dir" "$frontend_compose" \
+        "$BACKEND_COMPOSE_PROJECT" "$backend_dir" "$backend_compose" \
+        "$BACKEND_COMPOSE_PROJECT"
+
+    if [ "$task_target" = "$DEFAULT_REVIEW_TASK" ]; then
+        printf -v command \
+            '%s; docker network inspect external-net >/dev/null 2>&1 || docker network create external-net; docker compose --project-name %q --project-directory %q -f %q up -d --build; docker compose --project-name %q --project-directory %q -f %q exec web sh -c %q; docker compose --project-name %q --project-directory %q -f %q up -d --build tdp-frontend' \
+            "$command" \
+            "$BACKEND_COMPOSE_PROJECT" "$backend_dir" "$backend_compose" \
+            "$BACKEND_COMPOSE_PROJECT" "$backend_dir" "$backend_compose" \
+            'python manage.py migrate' \
+            "$FRONTEND_COMPOSE_PROJECT" "$frontend_dir" "$frontend_compose"
+    else
+        printf -v task_command 'task %q' "$task_target"
+        command="$command; $task_command"
+    fi
+
+    printf 'bash -lc %q' "$command"
+}
+
 start_review() {
     local branch_input="$1"
     local remote="$2"
@@ -281,10 +313,11 @@ start_review() {
     local review_commit
     local remote_ref
     local task_command
+    local worktree_git_dir
 
     require_command git
     require_command tmux
-    require_command task
+    require_command docker
     validate_environment
 
     branch=$(normalize_remote_branch "$remote" "$branch_input")
@@ -294,6 +327,9 @@ start_review() {
     validate_worktree_name "$branch_name"
     worktree_name="$branch_name"
     [[ "$task_target" =~ ^[A-Za-z0-9:_-]+$ ]] || die "Invalid Taskfile target: $task_target"
+    if [ "$task_target" != "$DEFAULT_REVIEW_TASK" ]; then
+        require_command task
+    fi
 
     worktree_path="$WORKTREE_ROOT/$worktree_name"
     issue_code="${branch_name:0:4}"
@@ -319,7 +355,16 @@ start_review() {
         die "Worktree preparation failed; rolled back review workspace"
     fi
 
-    printf -v task_command 'task %q' "$task_target"
+    worktree_git_dir=$(git -C "$worktree_path" rev-parse --absolute-git-dir)
+    if ! touch "$worktree_git_dir/$REVIEW_WORKTREE_MARKER"; then
+        rollback_new_worktree "$worktree_path" "$branch_name"
+        die "Could not mark the review worktree; rolled back review workspace"
+    fi
+
+    printf '%s\n' \
+        'WARNING: Starting a PR review stops the shared TANF-app stack and deletes' \
+        'the shared local backend database and all other backend review volumes.'
+    task_command=$(review_tmux_command "$worktree_path" "$task_target")
     if ! create_two_pane_window "$session" "R-$issue_code" "$worktree_path" "$task_command"; then
         rollback_new_worktree "$worktree_path" "$branch_name"
         die "tmux setup failed; rolled back review workspace"
@@ -407,6 +452,46 @@ tmux_windows_for_worktree() {
     done < <(tmux list-panes -s -t "=$session" -F '#{window_id}|#{pane_current_path}')
 }
 
+worktree_owns_running_compose_project() {
+    local worktree_path="$1"
+    local project="$2"
+    local project_dir="$3"
+
+    [ -n "$(docker ps -q \
+        --filter "label=com.docker.compose.project=$project" \
+        --filter "label=com.docker.compose.project.working_dir=$worktree_path/$project_dir")" ]
+}
+
+stop_worktree_compose_projects() {
+    local worktree_path="$1"
+    local backend_dir="$worktree_path/tdrs-backend"
+    local frontend_dir="$worktree_path/tdrs-frontend"
+
+    if worktree_owns_running_compose_project \
+        "$worktree_path" "$FRONTEND_COMPOSE_PROJECT" "tdrs-frontend"; then
+        printf 'Stopping frontend Compose project owned by this worktree...\n'
+        docker compose --project-name "$FRONTEND_COMPOSE_PROJECT" \
+            --project-directory "$frontend_dir" \
+            -f "$frontend_dir/docker-compose.yml" down --remove-orphans
+    fi
+
+    if worktree_owns_running_compose_project \
+        "$worktree_path" "$BACKEND_COMPOSE_PROJECT" "tdrs-backend"; then
+        printf 'Stopping backend Compose project owned by this worktree...\n'
+        docker compose --project-name "$BACKEND_COMPOSE_PROJECT" \
+            --project-directory "$backend_dir" \
+            -f "$backend_dir/docker-compose.yml" down --remove-orphans
+    fi
+}
+
+is_review_worktree() {
+    local worktree_path="$1"
+    local worktree_git_dir
+
+    worktree_git_dir=$(git -C "$worktree_path" rev-parse --absolute-git-dir) || return 1
+    [ -f "$worktree_git_dir/$REVIEW_WORKTREE_MARKER" ]
+}
+
 finish_worktree() {
     local input="$1"
     local delete_branch="$2"
@@ -444,6 +529,11 @@ finish_worktree() {
 
     if [ "$force" = "true" ]; then
         delete_args=(-D)
+    fi
+
+    if is_review_worktree "$worktree_path"; then
+        require_command docker
+        stop_worktree_compose_projects "$worktree_path"
     fi
 
     printf 'Removing worktree: %s\n' "$worktree_path"
