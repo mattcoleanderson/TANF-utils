@@ -24,7 +24,7 @@ die() {
 
 usage() {
     cat <<'EOF'
-Manage TANF-app issue and pull request worktrees.
+Manage TANF-app development and pull request worktrees.
 
 Usage:
   tanf-worktree.sh
@@ -44,25 +44,31 @@ Commands:
   list     List the repository's active worktrees.
 
 Branch naming:
-  New issue branches and the final path component of existing review branches
-  must start with a four-digit issue code and a hyphen, for example:
-  feature/5603-file-submission-error-message-and-form-reset
+  Issue numbers are optional. Branches may include prefixes such as hotfix/.
+  The final path component is used as the worktree directory name and must
+  start with a letter or digit, followed by letters, digits, dots, underscores,
+  or hyphens. Git branch naming rules also apply.
+  Window labels use the issue number for NNNN-description names, otherwise the
+  full directory name. Review windows add an R- prefix.
 
 Options:
-  --base REF          Base the new issue branch on REF (default: develop).
+  --base REF          Base the new branch on REF (default: develop).
   --remote NAME       Fetch the review branch from NAME (default: origin).
   --task TARGET       After destructive cleanup, run TARGET instead of the standard
                       clean rebuild and migration sequence (default: up).
   --session NAME      Use this tmux session instead of the current session.
-  --delete-branch     Delete the local issue branch after removing its worktree.
+  --delete-branch     Delete the local branch after removing its worktree.
   --force             Remove a dirty worktree and force branch deletion when requested.
   -h, --help          Show help.
 
 Examples:
   tanf-worktree.sh issue 6000-add-audit-log
   tanf-worktree.sh issue 6000-add-audit-log --base release/v4.24.0
+  tanf-worktree.sh issue hotfix/login-timeout
   tanf-worktree.sh review 6000-add-audit-log --remote origin
+  tanf-worktree.sh review hotfix/login-timeout
   tanf-worktree.sh finish 6000-add-audit-log --delete-branch
+  tanf-worktree.sh finish login-timeout --delete-branch
 EOF
 }
 
@@ -81,10 +87,30 @@ validate_environment() {
 validate_worktree_name() {
     local name="$1"
 
-    [[ "$name" =~ ^[0-9]{4}-[A-Za-z0-9][A-Za-z0-9._-]*$ ]] ||
-        die "Name must begin with a four-digit issue code and hyphen: $name"
+    [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] ||
+        die "Worktree name must start with a letter or digit and contain only letters, digits, dots, underscores, or hyphens: $name"
     git -C "$MAIN_WORKTREE" check-ref-format --branch "$name" >/dev/null 2>&1 ||
         die "Invalid Git branch name: $name"
+}
+
+worktree_name_from_branch() {
+    local branch="$1"
+    local name="${branch##*/}"
+
+    git -C "$MAIN_WORKTREE" check-ref-format --branch "$branch" >/dev/null 2>&1 ||
+        die "Invalid Git branch name: $branch"
+    validate_worktree_name "$name"
+    printf '%s\n' "$name"
+}
+
+worktree_window_label() {
+    local name="$1"
+
+    if [[ "$name" =~ ^[0-9]{4}-[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+        printf '%s\n' "${name:0:4}"
+    else
+        printf '%s\n' "$name"
+    fi
 }
 
 resolve_tmux_session() {
@@ -222,8 +248,9 @@ start_issue() {
     local branch="$1"
     local base="$2"
     local requested_session="$3"
-    local worktree_path="$WORKTREE_ROOT/$branch"
-    local issue_code="${branch:0:4}"
+    local worktree_name
+    local worktree_path
+    local window_label
     local session
 
     require_command git
@@ -231,7 +258,9 @@ start_issue() {
     require_command nvim
     require_command opencode
     validate_environment
-    validate_worktree_name "$branch"
+    worktree_name=$(worktree_name_from_branch "$branch")
+    worktree_path="$WORKTREE_ROOT/$worktree_name"
+    window_label=$(worktree_window_label "$worktree_name")
     [ ! -e "$worktree_path" ] || die "Worktree path already exists: $worktree_path"
     git -C "$MAIN_WORKTREE" rev-parse --verify "${base}^{commit}" >/dev/null 2>&1 ||
         die "Base ref does not resolve to a commit: $base"
@@ -240,9 +269,9 @@ start_issue() {
     fi
 
     session=$(resolve_tmux_session "$requested_session")
-    ensure_window_name_available "$session" "$issue_code"
+    ensure_window_name_available "$session" "$window_label"
 
-    printf 'Creating issue worktree %s from %s...\n' "$branch" "$base"
+    printf 'Creating worktree %s from %s...\n' "$branch" "$base"
     git -C "$MAIN_WORKTREE" worktree add -b "$branch" "$worktree_path" "$base"
 
     if ! prepare_worktree "$worktree_path"; then
@@ -250,12 +279,12 @@ start_issue() {
         die "Worktree preparation failed; rolled back $branch"
     fi
 
-    if ! create_two_pane_window "$session" "$issue_code" "$worktree_path" "nvim" "opencode"; then
+    if ! create_two_pane_window "$session" "$window_label" "$worktree_path" "nvim" "opencode"; then
         rollback_new_worktree "$worktree_path" "$branch"
         die "tmux setup failed; rolled back $branch"
     fi
 
-    printf 'Issue workspace ready: %s\n' "$worktree_path"
+    printf 'Workspace ready: %s\n' "$worktree_path"
 }
 
 normalize_remote_branch() {
@@ -308,7 +337,7 @@ start_review() {
     local branch_name
     local worktree_name
     local worktree_path
-    local issue_code
+    local window_label
     local session
     local review_commit
     local remote_ref
@@ -321,10 +350,7 @@ start_review() {
     validate_environment
 
     branch=$(normalize_remote_branch "$remote" "$branch_input")
-    git -C "$MAIN_WORKTREE" check-ref-format --branch "$branch" >/dev/null 2>&1 ||
-        die "Invalid Git branch name: $branch"
-    branch_name="${branch##*/}"
-    validate_worktree_name "$branch_name"
+    branch_name=$(worktree_name_from_branch "$branch")
     worktree_name="$branch_name"
     [[ "$task_target" =~ ^[A-Za-z0-9:_-]+$ ]] || die "Invalid Taskfile target: $task_target"
     if [ "$task_target" != "$DEFAULT_REVIEW_TASK" ]; then
@@ -332,14 +358,14 @@ start_review() {
     fi
 
     worktree_path="$WORKTREE_ROOT/$worktree_name"
-    issue_code="${branch_name:0:4}"
+    window_label="R-$(worktree_window_label "$worktree_name")"
     [ ! -e "$worktree_path" ] || die "Worktree path already exists: $worktree_path"
     if git -C "$MAIN_WORKTREE" show-ref --verify --quiet "refs/heads/$branch_name"; then
         die "Local branch already exists: $branch_name"
     fi
 
     session=$(resolve_tmux_session "$requested_session")
-    ensure_window_name_available "$session" "R-$issue_code"
+    ensure_window_name_available "$session" "$window_label"
 
     printf 'Fetching %s/%s...\n' "$remote" "$branch"
     remote_ref="refs/remotes/$remote/$branch"
@@ -365,7 +391,7 @@ start_review() {
         'WARNING: Starting a PR review stops the shared TANF-app stack and deletes' \
         'the shared local backend database and all other backend review volumes.'
     task_command=$(review_tmux_command "$worktree_path" "$task_target")
-    if ! create_two_pane_window "$session" "R-$issue_code" "$worktree_path" "$task_command"; then
+    if ! create_two_pane_window "$session" "$window_label" "$worktree_path" "$task_command"; then
         rollback_new_worktree "$worktree_path" "$branch_name"
         die "tmux setup failed; rolled back review workspace"
     fi
@@ -625,10 +651,10 @@ interactive_menu() {
     local force="false"
 
     PS3="Select a workflow: "
-    select choice in "Start issue" "Review pull request" "Finish worktree" "List worktrees" "Exit"; do
+    select choice in "Start work" "Review pull request" "Finish worktree" "List worktrees" "Exit"; do
         case "$choice" in
-            "Start issue")
-                branch=$(prompt_value "Issue branch/worktree name")
+            "Start work")
+                branch=$(prompt_value "Branch name")
                 base=$(prompt_value "Base ref" "$DEFAULT_BASE")
                 start_issue "$branch" "$base" ""
                 return

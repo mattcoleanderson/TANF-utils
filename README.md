@@ -60,13 +60,19 @@ The worktree workflow requires `git`, `tmux`, `nvim`, and `opencode`. Pull reque
 
 Run `tanf-worktree.sh` with no arguments for an interactive menu, or use one of the commands below. Run it from an existing tmux session, or pass `--session NAME`. If exactly one tmux session exists, it is selected automatically.
 
-New issue branch names must start with a four-digit issue number followed by a hyphen, such as `6000-add-audit-log`. Existing review branches may include a prefix such as `feature/`; their final path component must follow the same issue-number format and is used as the local worktree name.
+Issue numbers are optional. Both new branches and existing review branches may use names such as `6000-add-audit-log`, `hotfix-login`, or `hotfix/login-timeout`. The final path component is used as the local worktree directory name. It must start with a letter or digit and contain only letters, digits, dots, underscores, or hyphens; Git branch naming rules also apply.
 
-### Start issue work
+Tmux window labels use the four-digit issue number when the directory name follows `NNNN-description`; otherwise they use the full directory name. Review windows add an `R-` prefix. Existing worktree paths, local branches, and window names are rejected. For example, `hotfix/login-timeout` and `feature/login-timeout` both map to directory `login-timeout`, so they cannot have worktrees at the same time.
+
+### Start work
+
+Choose **Start work** in the interactive menu, or use the `issue` command for either numbered or unnumbered branches:
 
 ```bash
 tanf-worktree.sh issue 6000-add-audit-log
 tanf-worktree.sh issue 6000-add-audit-log --base release/v4.24.0
+tanf-worktree.sh issue hotfix-login
+tanf-worktree.sh issue hotfix/login-timeout
 ```
 
 This command:
@@ -74,7 +80,9 @@ This command:
 1. Creates a local branch and worktree from `develop`, or from `--base REF`.
 2. Links `.agents` and `opencode.json` into the worktree.
 3. Copies both `.env` files from `00-main`.
-4. Opens a tmux window named with the issue number, with Neovim and OpenCode in side-by-side panes.
+4. Opens a tmux window with Neovim and OpenCode in side-by-side panes. For example, `6000-add-audit-log` uses window `6000`, and `hotfix/login-timeout` uses window `login-timeout`.
+
+New branches retain their full names: `issue hotfix/login-timeout` creates branch `hotfix/login-timeout` in directory `login-timeout`.
 
 ### Review a pull request branch
 
@@ -82,9 +90,12 @@ This command:
 tanf-worktree.sh review 6000-add-audit-log
 tanf-worktree.sh review origin/6000-add-audit-log --task up
 tanf-worktree.sh review feature/6000-add-audit-log
+tanf-worktree.sh review hotfix/login-timeout
 ```
 
-This fetches the remote branch, creates a local branch and worktree that track it, prepares the local files, and opens a tmux window named `R-6000`. For example, reviewing `feature/6000-add-audit-log` creates local branch `6000-add-audit-log` with `origin/feature/6000-add-audit-log` as its upstream, so `git pull` retrieves later changes from the author.
+This fetches the remote branch, creates a local branch and worktree that track it, prepares the local files, and opens a review tmux window. For example, reviewing `feature/6000-add-audit-log` creates local branch `6000-add-audit-log` with `origin/feature/6000-add-audit-log` as its upstream and window `R-6000`, so `git pull` retrieves later changes from the author.
+
+For an unnumbered branch such as `hotfix/login-timeout`, the local branch and directory are named `login-timeout`, the upstream is `origin/hotfix/login-timeout`, and the window is named `R-login-timeout`.
 
 The review deployment runs in the new tmux window. It stops the shared `tdrs-frontend` and `tdrs-backend` Compose projects, removes all named volumes belonging to the backend project, rebuilds and starts the review branch's backend, applies its migrations, then rebuilds and starts its nginx frontend. The command stops on the first failure.
 
@@ -98,11 +109,14 @@ The review deployment runs in the new tmux window. It stops the shared `tdrs-fro
 tanf-worktree.sh list
 tanf-worktree.sh finish 6000-add-audit-log
 tanf-worktree.sh finish 6000 --delete-branch
+tanf-worktree.sh finish login-timeout --delete-branch
 ```
 
 For review worktrees, `finish` checks the running Compose containers before removing the worktree. It stops each shared backend or frontend project only when Docker's Compose labels show that the project was started from the worktree being removed, preventing containers from retaining bind mounts into a deleted worktree. Finishing an inactive review worktree does not stop a stack owned by another worktree. Issue-worktree cleanup is unchanged and does not require Docker.
 
 The command also removes any tmux window rooted in the worktree. It preserves the local branch unless `--delete-branch` is supplied. Dirty worktrees are rejected unless `--force` is supplied. Backend volumes are retained by `finish`, but the next `review` always deletes them before deployment.
+
+Use the full directory name for unnumbered worktrees. The four-digit shortcut (such as `finish 6000`) remains available for numbered worktrees. Finishing a newly created prefixed branch deletes its full Git branch name when `--delete-branch` is supplied.
 
 Run `tanf-worktree.sh --help` for all options.
 
