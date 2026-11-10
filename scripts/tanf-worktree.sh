@@ -458,6 +458,88 @@ registered_worktree_paths() {
     done < <(git -C "$MAIN_WORKTREE" worktree list --porcelain)
 }
 
+is_nonworktree_directory() {
+    local path="$1"
+
+    [ "${path%/*}" = "$WORKTREE_ROOT" ] &&
+        [ "$path" != "$MAIN_WORKTREE" ] &&
+        [ -d "$path" ] && [ ! -L "$path" ] &&
+        [ ! -e "$path/.git" ] && [ ! -L "$path/.git" ] &&
+        ! is_registered_worktree "$path"
+}
+
+nonworktree_directories() {
+    local path
+
+    for path in "$WORKTREE_ROOT"/*; do
+        if is_nonworktree_directory "$path"; then
+            printf '%s\n' "$path"
+        fi
+    done
+}
+
+cleanup_nonworktree_directory() {
+    local path="$1"
+    local name="${path##*/}"
+    local session
+    local window_id
+    local branch
+    local windows=()
+    local branches=()
+
+    git -C "$MAIN_WORKTREE" worktree list --porcelain >/dev/null ||
+        die "Cannot verify registered worktrees; refusing orphan cleanup"
+    is_nonworktree_directory "$path" || die "Not a non-worktree directory: $path"
+    printf 'Non-worktree directory: %s\n' "$path"
+    printf 'Git metadata is missing; remaining files cannot be checked for uncommitted work.\n'
+    printf 'Remaining contents (including hidden files):\n'
+    ls -la "$path"
+    printf 'Compose services and volumes are not changed; inspect them separately if needed.\n'
+
+    session=$(resolve_tmux_session "")
+    while IFS= read -r window_id; do
+        [ -n "$window_id" ] && windows+=("$window_id")
+    done < <(tmux_windows_for_worktree "$session" "$path")
+    if [ "${#windows[@]}" -gt 0 ]; then
+        printf 'Matching tmux windows in %s:\n' "$session"
+        for window_id in "${windows[@]}"; do
+            tmux display-message -p -t "$window_id" '#{window_id}: #{window_name}'
+        done
+        if prompt_yes_no "Close these windows (including all their panes)?"; then
+            for window_id in "${windows[@]}"; do
+                tmux kill-window -t "$window_id"
+            done
+        fi
+    else
+        printf 'No tmux windows in session %s are rooted in this directory.\n' "$session"
+    fi
+
+    printf 'Checking local branches with matching final path component (not proof of ownership)...\n'
+    while IFS= read -r branch; do
+        if [ "${branch##*/}" = "$name" ]; then
+            branches+=("$branch")
+        fi
+    done < <(git -C "$MAIN_WORKTREE" for-each-ref --format='%(refname:strip=2)' refs/heads/)
+    if [ "${#branches[@]}" -eq 0 ]; then
+        printf 'No matching local branches found.\n'
+    fi
+    for branch in "${branches[@]}"; do
+        if prompt_yes_no "Delete candidate local branch $branch?"; then
+            git -C "$MAIN_WORKTREE" branch -d -- "$branch" ||
+                printf 'Branch preserved: %s (Git refused safe deletion).\n' "$branch"
+        fi
+    done
+
+    if [ -z "$(ls -A "$path")" ]; then
+        if prompt_yes_no "Remove the empty directory $path?"; then
+            is_nonworktree_directory "$path" || die "Directory changed during cleanup: $path"
+            rmdir -- "$path"
+        fi
+    else
+        printf 'Nonempty directory preserved for manual cleanup: %s\n' "$path"
+    fi
+}
+
 tmux_windows_for_worktree() {
     local session="$1"
     local worktree_path="$2"
@@ -623,21 +705,36 @@ choose_worktree() {
     local worktrees=()
     local path
     local selection
+    local index=0
 
+    require_command git
+    git -C "$MAIN_WORKTREE" worktree list --porcelain >/dev/null ||
+        die "Cannot list registered worktrees"
+    printf 'Registered worktrees:\n' >&2
     while IFS= read -r path; do
-        [ "$path" != "$MAIN_WORKTREE" ] && worktrees+=("$path")
+        [ "$path" != "$MAIN_WORKTREE" ] || continue
+        worktrees+=("$path")
+        index=$((index + 1))
+        printf '  %s) %s\n' "$index" "$path" >&2
     done < <(registered_worktree_paths)
 
-    [ "${#worktrees[@]}" -gt 0 ] || die "No removable worktrees found"
+    printf 'Non-worktree directories (inspect leftover files, windows, and branches):\n' >&2
+    while IFS= read -r path; do
+        worktrees+=("$path")
+        index=$((index + 1))
+        printf '  %s) %s\n' "$index" "$path" >&2
+    done < <(nonworktree_directories)
 
-    printf 'Choose a worktree:\n' >&2
-    select selection in "${worktrees[@]}"; do
-        if [ -n "${selection:-}" ]; then
-            printf '%s\n' "$selection"
+    [ "${#worktrees[@]}" -gt 0 ] || die "No worktrees or non-worktree directories found"
+
+    while read -r -p 'Choose a directory number: ' selection; do
+        if [[ "$selection" =~ ^[1-9][0-9]{0,8}$ ]] && [ "$selection" -le "$index" ]; then
+            printf '%s\n' "${worktrees[$((selection - 1))]}"
             return
         fi
         printf 'Invalid selection.\n' >&2
     done
+    return 1
 }
 
 interactive_menu() {
@@ -668,6 +765,10 @@ interactive_menu() {
                 ;;
             "Finish worktree")
                 worktree=$(choose_worktree)
+                if is_nonworktree_directory "$worktree"; then
+                    cleanup_nonworktree_directory "$worktree"
+                    return
+                fi
                 if prompt_yes_no "Delete its local branch too?"; then
                     delete_branch="true"
                 fi
@@ -843,4 +944,6 @@ main() {
     esac
 }
 
-main "$@"
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    main "$@"
+fi

@@ -118,6 +118,8 @@ The command also removes any tmux window rooted in the worktree. It preserves th
 
 Use the full directory name for unnumbered worktrees. The four-digit shortcut (such as `finish 6000`) remains available for numbered worktrees. Finishing a newly created prefixed branch deletes its full Git branch name when `--delete-branch` is supplied.
 
+The interactive **Finish worktree** menu also has a **Non-worktree directories** section for leftover directories under the worktree root that are not registered with Git and have no `.git` entry. Symlinks are excluded. Selecting one shows its remaining contents and offers to close tmux windows rooted there in the selected session. Local branches with the same final path component are offered individually as cleanup candidates, not assumed to belong to the directory; deletion uses Git's safe `-d` check, never force deletion. Empty-directory removal requires confirmation. Nonempty directories, Compose services, and volumes are preserved for manual inspection and cleanup. The CLI `finish` command still accepts only registered worktrees.
+
 Run `tanf-worktree.sh --help` for all options.
 
 ## Utility scripts
